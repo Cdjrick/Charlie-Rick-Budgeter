@@ -9,7 +9,7 @@ request.onupgradeneeded = function (event) {
     // Save a reference to the database 
     const db = event.target.result
     // Create an object store (table) called `transactions`, set it to have an auto incrementing primary key of sorts 
-    db.createObjectStore('transaction', { autoIncrement: true })
+    db.createObjectStore('new_purchase', { autoIncrement: true })
 }
 
 // upon a successful 
@@ -21,7 +21,7 @@ request.onsuccess = function (event) {
     // Check if app is online, if yes run uploadTransaction() function to send all local db data to api
     if (navigator.onLine) {
         // We haven't created this yet, but we will soon, so let's comment it out for now
-        // uploadTransaction()
+        uploadPurchase()
     }
 }
 
@@ -33,12 +33,56 @@ request.onerror = function (event) {
 // This function will be executed if we attempt to submit a new transaction and there's no internet connection
 function saveRecord(record) {
     // Open a new transaction with the database with read and write permissions 
-    const transaction = db.transaction(['transactions'], 'readwrite')
+    const transaction = db.transaction(['new_purchase'], 'readwrite')
 
     // Access the object store for `transactions`
-    const transactionsObjectStore = transaction.objectStore('transactions')
+    const purchaseObjectStore = transaction.objectStore('new_purchase')
 
     // Add record to your store with add method
-    transactionsObjectStore.add(record)
+    purchaseObjectStore.add(record)
 }
 
+function uploadPurchase() {
+    // Open a transaction on your db
+    const transaction = db.transaction(['new_purchase'], 'readwrite');
+
+    // Access your object store
+    const purchaseObjectStore = transaction.objectStore('new_purchase');
+
+    // Get all records from store and set to a variable
+    const getAll = purchaseObjectStore.getAll();
+
+    // Upon a successful .getAll() execution, run this function
+    getAll.onsuccess = function () {
+        // If there was data in indexedDb's store, let's send it to the api server
+        if (getAll.result.length > 0) {
+            fetch('/api/transaction', {
+                method: 'POST',
+                body: JSON.stringify(getAll.result),
+                headers: {
+                    Accept: 'application/json, text/plain, */*',
+                    'Content-Type': 'application/json'
+                }
+            })
+                .then(response => response.json())
+                .then(serverResponse => {
+                    if (serverResponse.message) {
+                        throw new Error(serverResponse);
+                    }
+                    // Open one more transaction
+                    const transaction = db.transaction(['new_purchase'], 'readwrite');
+                    // Access the new_purchase object store
+                    const purchaseObjectStore = transaction.objectStore('new_purchase');
+                    // Clear all items in your store
+                    purchaseObjectStore.clear();
+
+                    alert('All saved purchases has been submitted!');
+                })
+                .catch(err => {
+                    console.log(err);
+                });
+        }
+    };
+}
+
+window.addEventListener('online', uploadPurchase);
